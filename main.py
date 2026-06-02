@@ -41,6 +41,31 @@ def alice_preparation():
             alice_qc.add(H(i))
     return alice_qc, alice_state, alice_basis
 
+import random
+
+def bob_measurement(circ):
+    nb_qubits = circ.nb_qubits
+    bases_bob = []
+    bits_mesures = []
+
+    gates = circ.to_gate()
+    for i in range(nb_qubits):
+        base = "0/1" if random.randint(0, 1) == 0 else "+/-"
+        bases_bob.append(base)
+        circ_qubit = QCircuit()
+        circ_qubit.add(gates)
+        if base == "+/-":
+            circ_qubit.add(BasisMeasure([i], basis=HadamardBasis(), shots=1000))
+        else:
+            circ_qubit.add(BasisMeasure([i], basis=ComputationalBasis(), shots=1000))
+        result = run(
+            circ_qubit,
+            [AWSDevice.BRAKET_LOCAL_SIMULATOR]
+        )
+        bit_string = result.results[0].job
+        print(bit_string)
+
+    return bases_bob
 
 
 if __name__ == "__main__":
