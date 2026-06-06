@@ -5,88 +5,120 @@ import random
 class Alice():
     def __init__(self, nb_qubits):
         self.nb_qubits = nb_qubits
+        self.states = []
+        self.bases = []
+        self.qc = QCircuit(nb_qubits)
+        self.agreed_states = []
+        self.sk = []
 
-    def alice_preparation(self):
-        alice_states = []
-        alice_basis = []
-        alice_qc = QCircuit(self.nb_qubits)
+    def prepare(self):
         for i in range(self.nb_qubits):
             r_num = np.random.randint(4)
             if r_num == 0:
-                alice_states.append(0)
-                alice_basis.append("0/1")
+                self.states.append(0)
+                self.bases.append("0/1")
             elif r_num == 1:
-                alice_states.append(1)
-                alice_basis.append("0/1")
-                alice_qc.add(X(i))
+                self.states.append(1)
+                self.bases.append("0/1")
+                self.qc.add(X(i))
             elif r_num == 2:
-                alice_states.append(0)
-                alice_basis.append("+/-")
-                alice_qc.add(H(i))
+                self.states.append(0)
+                self.bases.append("+/-")
+                self.qc.add(H(i))
             elif r_num == 3:
-                alice_states.append(1)
-                alice_basis.append("+/-")
-                alice_qc.add(X(i))
-                alice_qc.add(H(i))
-        self.qc = alice_qc
-        self.states = alice_states
-        self.basis = alice_basis
+                self.states.append(1)
+                self.bases.append("+/-")
+                self.qc.add(X(i))
+                self.qc.add(H(i))
 
-    def agree_on_basis(self, other_basis):
-        agreed_index = [i for i, (a, b) in enumerate(zip(self.basis, other_basis)) if a == b]
-        self.agreed_states = [self.basis[i] for i in agreed_index]
+    def find_matching_bases(self, other_basis):
+        agreed_index = [i for i, (a, b) in enumerate(zip(self.bases, other_basis)) if a == b]
+        self.agreed_states = [self.states[i] for i in agreed_index]
         return agreed_index
     
     def check_agree(self):
         random_check = np.random.randint(len(self.agreed_states), size=len(self.agreed_states)//3)
-        return random_check, [self.basis[i] for i in random_check]
+        return random_check, [self.agreed_states[i] for i in random_check]
     
-    def fix_sk(self, agreed):
-        self.sk = [self.agreed_states[i] for i in agreed]
+    def fix_sk(self, indices):
+        self.sk = [self.agreed_states[i] for i in range(len(self.agreed_states)) if i not in indices]
 
-def main():
-    nb_qubits = 12
-    alice = Alice()
+class Bob:
+    def __init__(self, nb_qubits,circ):
+        self.nb_qubits = nb_qubits
+        self.circ = circ
+        self.bases = []
+        self.results = []
+        self.agreed_states = []
 
+    def measure(self):
+        for i in range(self.nb_qubits):
+            base = "0/1" if random.randint(0, 1) == 0 else "+/-"
+            self.bases.append(base)
 
-def bob_measurement(circ):
-    nb_qubits = circ.nb_qubits
-    bases_bob = []
-    bits_mesures = []
-
-    gates = circ.to_gate()
-    for i in range(nb_qubits):
-        base = "0/1" if random.randint(0, 1) == 0 else "+/-"
-        bases_bob.append(base)
-
-        circ_qubit = QCircuit()
-        circ_qubit.add(gates)
-
-        if base == "+/-":
-            circ_qubit.add(BasisMeasure([i], basis=HadamardBasis(1), shots=0))
-        else:
-            circ_qubit.add(BasisMeasure([i], basis=ComputationalBasis(1), shots=0))
-
-        result = run(
-            circ_qubit,
-            [AWSDevice.BRAKET_LOCAL_SIMULATOR]
-        )
+            if base == "+/-":
+                self.circ.add(H(i))
+                
+        self.circ.add(BasisMeasure(basis=ComputationalBasis(), shots=0))
+                
+        result = run(self.circ, [AWSDevice.BRAKET_LOCAL_SIMULATOR])
         amps = result[0].amplitudes
         probabilities = np.abs(amps) ** 2
         idx_max = np.argmax(probabilities)
-        bin_str = format(idx_max, f'0{nb_qubits}b')
-        bit_interet = bin_str[i]
-        bits_mesures.append(bit_interet)
+            
+        bin_str = format(idx_max, f'0{self.nb_qubits}b')
+        self.results = [int(i) for i in bin_str]
 
-    return bases_bob, bits_mesures
+    def agree_on_bases(self, agreed_index):
+        self.agreed_states = [self.results[i] for i in agreed_index]
+    
+    def fix_sk(self, indices):
+        self.sk = [self.agreed_states[i] for i in range(len(self.agreed_states)) if i not in indices]
 
-#c, _, _ = alice_preparation()
-c = QCircuit(3)
-bases, bits = bob_measurement(c)
-print(bases)
-print(bits)
-#print("Bases de Bob :", bases)
-#print("Bits mesurés :", bits)
+def main():
+    nb_qubits = 12
+    print(f"=== LANCEMENT DU TEST BB84 SUR {nb_qubits} QUBITS ===\n")
+    
+    #PARTIE ALICE
+    alice = Alice(nb_qubits)
+    alice.prepare()
+    print("--- 1. ÉTATS SOUHAITÉS PAR ALICE ---")
+    print("Bases d'Alice        :", alice.bases)
+    print("Bits secrets d'Alice :", alice.states)
+    print("-" * 40 + "\n")
+    
+    #PARTIE BOB
+    bob = Bob(nb_qubits, alice.qc)
+    bob.measure()
+    print("--- 2. MESURES DE BOB ---")
+    print("Bases de Bob        :", bob.bases)
+    print("Bits mesurés        :", bob.results)
+    print("-" * 40 + "\n")
+    
+    agreed_index = alice.find_matching_bases(bob.bases)
+    bob.agree_on_bases(agreed_index)
+    
+    print("--- 3. RÉCONCILIATION DES BASES ---")
+    print("Indices partagés (bases identiques) :", agreed_index)
+    print("Bits conservés par Alice            :", alice.agreed_states)
+    print("Bits conservés par Bob              :", bob.agreed_states)
+    print("-" * 40 + "\n")
+    
+    indices_test, bits_test_alice = alice.check_agree()
+    bits_test_bob = [bob.agreed_states[i] for i in indices_test]
+    
+    print(f"--- 4. TEST DE SÉCURITÉ (Échantillon choisi : {list(indices_test)}) ---")
+    print("Bits de contrôle d'Alice :", bits_test_alice)
+    print("Bits de contrôle de Bob   :", bits_test_bob)
+    
+    if bits_test_alice == bits_test_bob:
+        print("\n[RÉSULTAT] Succès : Aucun espionnage détecté.")
+        alice.fix_sk(indices_test)
+        bob.fix_sk(indices_test)
+        print("-> Clé secrète finale d'Alice :", alice.sk)
+        print("-> Clé secrète finale de Bob   :", bob.sk)
+    else:
+        print("\n[RÉSULTAT] Alerte : Les bits de test diffèrent ! Le canal est corrompu.")
 
 
 if __name__ == "__main__":
