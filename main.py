@@ -1,5 +1,6 @@
 from mpqp import *
 import numpy as np
+import random
 
 nb_qubits = 11
 
@@ -41,8 +42,6 @@ def alice_preparation():
             alice_qc.add(H(i))
     return alice_qc, alice_state, alice_basis
 
-import random
-
 def bob_measurement(circ):
     nb_qubits = circ.nb_qubits
     bases_bob = []
@@ -52,20 +51,35 @@ def bob_measurement(circ):
     for i in range(nb_qubits):
         base = "0/1" if random.randint(0, 1) == 0 else "+/-"
         bases_bob.append(base)
+
         circ_qubit = QCircuit()
         circ_qubit.add(gates)
+
         if base == "+/-":
-            circ_qubit.add(BasisMeasure([i], basis=HadamardBasis(), shots=1000))
+            circ_qubit.add(BasisMeasure([i], basis=HadamardBasis(1), shots=0))
         else:
-            circ_qubit.add(BasisMeasure([i], basis=ComputationalBasis(), shots=1000))
+            circ_qubit.add(BasisMeasure([i], basis=ComputationalBasis(1), shots=0))
+
         result = run(
             circ_qubit,
             [AWSDevice.BRAKET_LOCAL_SIMULATOR]
         )
-        bit_string = result.results[0].job
-        print(bit_string)
+        amps = result[0].amplitudes
+        probabilities = np.abs(amps) ** 2
+        idx_max = np.argmax(probabilities)
+        bin_str = format(idx_max, f'0{nb_qubits}b')
+        bit_interet = bin_str[i]
+        bits_mesures.append(bit_interet)
 
-    return bases_bob
+    return bases_bob, bits_mesures
+
+#c, _, _ = alice_preparation()
+c = QCircuit(3)
+bases, bits = bob_measurement(c)
+print(bases)
+print(bits)
+#print("Bases de Bob :", bases)
+#print("Bits mesurés :", bits)
 
 
 if __name__ == "__main__":
