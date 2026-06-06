@@ -1,47 +1,53 @@
 from mpqp import *
 import numpy as np
+import random
 
-nb_qubits = 11
+class Alice():
+    def __init__(self, nb_qubits):
+        self.nb_qubits = nb_qubits
+
+    def alice_preparation(self):
+        alice_states = []
+        alice_basis = []
+        alice_qc = QCircuit(self.nb_qubits)
+        for i in range(self.nb_qubits):
+            r_num = np.random.randint(4)
+            if r_num == 0:
+                alice_states.append(0)
+                alice_basis.append("0/1")
+            elif r_num == 1:
+                alice_states.append(1)
+                alice_basis.append("0/1")
+                alice_qc.add(X(i))
+            elif r_num == 2:
+                alice_states.append(0)
+                alice_basis.append("+/-")
+                alice_qc.add(H(i))
+            elif r_num == 3:
+                alice_states.append(1)
+                alice_basis.append("+/-")
+                alice_qc.add(X(i))
+                alice_qc.add(H(i))
+        self.qc = alice_qc
+        self.states = alice_states
+        self.basis = alice_basis
+
+    def agree_on_basis(self, other_basis):
+        agreed_index = [i for i, (a, b) in enumerate(zip(self.basis, other_basis)) if a == b]
+        self.agreed_states = [self.basis[i] for i in agreed_index]
+        return agreed_index
+    
+    def check_agree(self):
+        random_check = np.random.randint(len(self.agreed_states), size=len(self.agreed_states)//3)
+        return random_check, [self.basis[i] for i in random_check]
+    
+    def fix_sk(self, agreed):
+        self.sk = [self.agreed_states[i] for i in agreed]
 
 def main():
-    alice_qc, alice_state, alice_basis = alice_preparation()
-    print(alice_qc)
-    print(alice_state)
-    print(alice_basis)
+    nb_qubits = 12
+    alice = Alice()
 
-
-    print(random_samples_to_check())
-
-
-def random_samples_to_check():
-    return np.random.randint(nb_qubits, size=nb_qubits//3)
-
-
-def alice_preparation():
-    alice_state = []
-    alice_basis = []
-    alice_qc = QCircuit(nb_qubits)
-    for i in range(nb_qubits):
-        r_num = np.random.randint(4)
-        if r_num == 0:
-            alice_state.append(0)
-            alice_basis.append("0/1")
-        elif r_num == 1:
-            alice_state.append(1)
-            alice_basis.append("0/1")
-            alice_qc.add(X(i))
-        elif r_num == 2:
-            alice_state.append(0)
-            alice_basis.append("+/-")
-            alice_qc.add(H(i))
-        elif r_num == 3:
-            alice_state.append(1)
-            alice_basis.append("+/-")
-            alice_qc.add(X(i))
-            alice_qc.add(H(i))
-    return alice_qc, alice_state, alice_basis
-
-import random
 
 def bob_measurement(circ):
     nb_qubits = circ.nb_qubits
