@@ -44,7 +44,7 @@ class Alice():
         self.sk = [self.agreed_states[i] for i in range(len(self.agreed_states)) if i not in indices]
 
 class Bob:
-    def __init__(self, nb_qubits,circ):
+    def __init__(self, nb_qubits, circ):
         self.nb_qubits = nb_qubits
         self.circ = circ
         self.bases = []
@@ -75,8 +75,34 @@ class Bob:
     def fix_sk(self, indices):
         self.sk = [self.agreed_states[i] for i in range(len(self.agreed_states)) if i not in indices]
 
+class Eve:
+    def __init__(self, nb_qubits, qc):
+        self.nb_qubits = nb_qubits
+        self.qc = qc
+        self.bases = []
+        self.results = []
+
+    def hack(self):
+        for i in range(self.nb_qubits):
+            base = "0/1" if random.randint(0, 1) == 0 else "+/-"
+            self.bases.append(base)
+
+            if base == "+/-":
+                self.qc.add(H(i))
+
+        self.qc.add(BasisMeasure(basis=ComputationalBasis(), shots=0))
+                
+        result = run(self.qc, [AWSDevice.BRAKET_LOCAL_SIMULATOR])
+        amps = result[0].amplitudes
+        probabilities = np.abs(amps) ** 2
+        idx_max = np.argmax(probabilities)
+            
+        bin_str = format(idx_max, f'0{self.nb_qubits}b')
+        self.results = [int(i) for i in bin_str]
+
+
 def main():
-    nb_qubits = 12
+    nb_qubits = 11
     print(f"=== LANCEMENT DU TEST BB84 SUR {nb_qubits} QUBITS ===\n")
     
     #PARTIE ALICE
@@ -86,9 +112,18 @@ def main():
     print("Bases d'Alice        :", alice.bases)
     print("Bits secrets d'Alice :", alice.states)
     print("-" * 40 + "\n")
+
+    #PARTIE EVE
+    eve = Eve(nb_qubits, alice.qc)
+    eve.hack()
+    print("--- !!! ÉTATS PERTURBES PAR EVE !!! ---")
+    print("Bases d'Eve        :", eve.bases)
+    print("Bits mesurés par Eve :", eve.results)
+    print("-" * 40 + "\n")
     
     #PARTIE BOB
-    bob = Bob(nb_qubits, alice.qc)
+    #bob = Bob(nb_qubits, alice.qc) - Without Eve hack
+    bob = Bob(nb_qubits, eve.qc.without_measurements())
     bob.measure()
     print("--- 2. MESURES DE BOB ---")
     print("Bases de Bob        :", bob.bases)
@@ -107,7 +142,7 @@ def main():
     indices_test, bits_test_alice = alice.check_agree()
     bits_test_bob = [bob.agreed_states[i] for i in indices_test]
     
-    print(f"--- 4. TEST DE SÉCURITÉ (Échantillon choisi : {list(indices_test)}) ---")
+    print(f"--- 4. TEST DE SÉCURITÉ (Échantillon choisi : {indices_test}) ---")
     print("Bits de contrôle d'Alice :", bits_test_alice)
     print("Bits de contrôle de Bob   :", bits_test_bob)
     
