@@ -100,8 +100,54 @@ class Eve:
         bin_str = format(idx_max, f'0{self.nb_qubits}b')
         self.results = [int(i) for i in bin_str]
 
+def bb84_protocol_test():
+    nb_qubits = 11
+    print(f"=== LANCEMENT DU TEST BB84 SUR {nb_qubits} QUBITS ===\n")
+    
+    #PARTIE ALICE
+    alice = Alice(nb_qubits)
+    alice.prepare()
+    print("--- 1. ÉTATS SOUHAITÉS PAR ALICE ---")
+    print("Bases d'Alice        :", alice.bases)
+    print("Bits secrets d'Alice :", alice.states)
+    print("-" * 40 + "\n")
+    
+    #PARTIE BOB
+    bob = Bob(nb_qubits, alice.qc)
+    bob.measure()
+    print("--- 2. MESURES DE BOB ---")
+    print("Bases de Bob        :", bob.bases)
+    print("Bits mesurés        :", bob.results)
+    print("-" * 40 + "\n")
+    
+    agreed_index = alice.find_matching_bases(bob.bases)
+    bob.agree_on_bases(agreed_index)
+    
+    print("--- 3. RÉCONCILIATION DES BASES ---")
+    print("Indices partagés (bases identiques) :", agreed_index)
+    print("Bits conservés par Alice            :", alice.agreed_states)
+    print("Bits conservés par Bob              :", bob.agreed_states)
+    print("-" * 40 + "\n")
+    
+    indices_test, bits_test_alice = alice.check_agree()
+    bits_test_bob = [bob.agreed_states[i] for i in indices_test]
+    
+    print(f"--- 4. TEST DE SÉCURITÉ (Échantillon choisi : {indices_test}) ---")
+    print("Bits de contrôle d'Alice :", bits_test_alice)
+    print("Bits de contrôle de Bob   :", bits_test_bob)
+    
+    if bits_test_alice == bits_test_bob:
+        print("\n[RÉSULTAT] Succès : Aucun espionnage détecté.")
+        alice.fix_sk(indices_test)
+        bob.fix_sk(indices_test)
+        print("-> Clé secrète finale d'Alice :", alice.sk)
+        print("-> Clé secrète finale de Bob   :", bob.sk)
+    else:
+        print("\n[RÉSULTAT] Alerte : Les bits de test diffèrent ! Le canal est corrompu.")
 
-def main():
+
+
+def bb84_protocol_test_with_eve():
     nb_qubits = 11
     print(f"=== LANCEMENT DU TEST BB84 SUR {nb_qubits} QUBITS ===\n")
     
@@ -122,7 +168,6 @@ def main():
     print("-" * 40 + "\n")
     
     #PARTIE BOB
-    #bob = Bob(nb_qubits, alice.qc) - Without Eve hack
     bob = Bob(nb_qubits, eve.qc.without_measurements())
     bob.measure()
     print("--- 2. MESURES DE BOB ---")
@@ -155,6 +200,9 @@ def main():
     else:
         print("\n[RÉSULTAT] Alerte : Les bits de test diffèrent ! Le canal est corrompu.")
 
+
+def main():
+    bb84_protocol_test()
 
 if __name__ == "__main__":
     main()
